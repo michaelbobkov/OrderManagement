@@ -82,5 +82,13 @@ jobs:
           JENKINS_USER: ${{ secrets.JENKINS_USER }}
           JENKINS_TOKEN: ${{ secrets.JENKINS_TOKEN }}
         run: |
+          for setting in JENKINS_URL JENKINS_JOB JENKINS_USER JENKINS_TOKEN; do
+            if [[ -z "${!setting}" ]]; then
+              echo "::error::$setting must be configured in the production environment"
+              exit 1
+            fi
+          done
+
+          JENKINS_JOB_PATH="$(python3 -c 'import os; from urllib.parse import quote; print(quote(os.environ["JENKINS_JOB"].strip("/")))' )"
           curl --fail -X POST -u "$JENKINS_USER:$JENKINS_TOKEN" \
-            "$JENKINS_URL/job/$JENKINS_JOB/buildWithParameters?GIT_COMMIT=$GITHUB_SHA"
+            "${JENKINS_URL%/}/job/$JENKINS_JOB_PATH/buildWithParameters?GIT_COMMIT=$GITHUB_SHA"
