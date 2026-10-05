@@ -35,7 +35,8 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - run: pip install flake8 && flake8 services/notification-service
+      - run: pip install flake8 && flake8
+        working-directory: services/notification-service
 
   lint-yaml:
     runs-on: ubuntu-latest
