@@ -72,6 +72,8 @@ jobs:
     needs: [lint-java, lint-python, lint-yaml, lint-ansible, lint-puppet]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
+    # Pauses for required reviewers; JENKINS_* secrets live in this environment.
+    environment: production
     steps:
       - name: Trigger Jenkins build
         env:
