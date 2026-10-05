@@ -1,0 +1,91 @@
+---
+- name: Ensure service user
+  ansible.builtin.user:
+    name: "{{ notification_user }}"
+    system: true
+    shell: /usr/sbin/nologin
+
+- name: Ensure Python venv support
+  ansible.builtin.apt:
+    name: [python3-venv, python3-pip]
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+
+- name: Create release directory
+  ansible.builtin.file:
+    path: "{{ notification_root }}/releases/{{ app_version }}"
+    state: directory
+    owner: "{{ notification_user }}"
+    mode: "0755"
+
+- name: Record the currently active release (for rollback)
+  ansible.builtin.stat:
+    path: "{{ notification_root }}/current"
+  register: notif_current
+
+- name: Save previous release path
+  ansible.builtin.copy:
+    content: "{{ notif_current.stat.lnk_source }}"
+    dest: "{{ notification_root }}/previous"
+    mode: "0644"
+  when: notif_current.stat.islnk | default(false)
+
+- name: Download wheel from GCS
+  ansible.builtin.command: >
+    gcloud storage cp {{ notification_artifact }}
+    {{ notification_root }}/releases/{{ app_version }}/
+  changed_when: true
+
+- name: Create venv and install wheel
+  ansible.builtin.shell: |
+    set -e
+    cd {{ notification_root }}/releases/{{ app_version }}
+    python3 -m venv venv
+    venv/bin/pip install --quiet ./*.whl
+  args:
+    executable: /bin/bash
+  changed_when: true
+
+- name: Fix ownership
+  ansible.builtin.file:
+    path: "{{ notification_root }}/releases/{{ app_version }}"
+    owner: "{{ notification_user }}"
+    recurse: true
+
+- name: Install systemd unit
+  ansible.builtin.template:
+    src: notification-service.service.j2
+    dest: /etc/systemd/system/notification-service.service
+    mode: "0644"
+  notify: Reload systemd
+
+- name: Flush handlers so the unit is loaded
+  ansible.builtin.meta: flush_handlers
+
+- name: Switch current symlink to new release
+  ansible.builtin.file:
+    src: "{{ notification_root }}/releases/{{ app_version }}"
+    dest: "{{ notification_root }}/current"
+    state: link
+    force: true
+
+- name: Restart notification-service
+  ansible.builtin.systemd:
+    name: notification-service
+    state: restarted
+    enabled: true
+
+- name: List releases
+  ansible.builtin.find:
+    paths: "{{ notification_root }}/releases"
+    file_type: directory
+  register: notif_releases
+
+- name: Prune old releases
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: absent
+  loop: "{{ (notif_releases.files | sort(attribute='mtime', reverse=true))[notification_keep_releases:] }}"
+  loop_control:
+    label: "{{ item.path }}"

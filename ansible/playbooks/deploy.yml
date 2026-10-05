@@ -1,0 +1,51 @@
+---
+# Rolling deploy of both services, one host at a time.
+# Extra vars: app_version (required), artifact_bucket, order_artifact, notification_artifact
+- name: Deploy order-platform services (rolling)
+  hosts: role_app
+  become: true
+  serial: 1
+  max_fail_percentage: 0
+  vars:
+    app_version: "{{ lookup('env', 'APP_VERSION') }}"
+  pre_tasks:
+    - name: Require a version
+      ansible.builtin.assert:
+        that: app_version | length > 0
+        fail_msg: "Pass -e app_version=<version>"
+  tasks:
+    - name: Deploy with automatic rollback
+      block:
+        - name: Deploy notification-service
+          ansible.builtin.include_role:
+            name: notification_deploy
+
+        - name: Deploy order-service
+          ansible.builtin.include_role:
+            name: app_deploy
+
+        - name: Verify notification-service health
+          ansible.builtin.uri:
+            url: "http://localhost:8000/health"
+            status_code: 200
+          register: notif_health
+          retries: 12
+          delay: 5
+          until: notif_health.status == 200
+
+        - name: Verify order-service health
+          ansible.builtin.uri:
+            url: "http://localhost:8080/actuator/health"
+            status_code: 200
+          register: order_health
+          retries: 24
+          delay: 5
+          until: order_health.status == 200
+
+      rescue:
+        - name: Roll back to previous release
+          ansible.builtin.include_tasks: ../roles/app_deploy/tasks/rollback.yml
+
+        - name: Fail the play so the pipeline stops (remaining hosts untouched)
+          ansible.builtin.fail:
+            msg: "Deploy of {{ app_version }} failed on {{ inventory_hostname }}; rolled back."

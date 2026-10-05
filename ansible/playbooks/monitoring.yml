@@ -1,0 +1,6 @@
+---
+- name: Configure Prometheus and Grafana
+  hosts: role_monitoring
+  become: true
+  roles:
+    - monitoring

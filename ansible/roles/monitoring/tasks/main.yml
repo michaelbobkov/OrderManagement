@@ -1,0 +1,89 @@
+---
+- name: Install Prometheus and Grafana prerequisites
+  ansible.builtin.apt:
+    name: [prometheus, apt-transport-https, gnupg, curl]
+    state: present
+    update_cache: true
+
+- name: Add Grafana apt key
+  ansible.builtin.get_url:
+    url: https://apt.grafana.com/gpg.key
+    dest: /etc/apt/keyrings/grafana.asc
+    mode: "0644"
+
+- name: Add Grafana apt repository
+  ansible.builtin.apt_repository:
+    repo: "deb [signed-by=/etc/apt/keyrings/grafana.asc] https://apt.grafana.com stable main"
+    state: present
+
+- name: Install Grafana
+  ansible.builtin.apt:
+    name: grafana
+    state: present
+    update_cache: true
+
+- name: Render Prometheus config with discovered app hosts
+  ansible.builtin.template:
+    src: prometheus.yml.j2
+    dest: /etc/prometheus/prometheus.yml
+    mode: "0644"
+    validate: /usr/bin/promtool check config %s
+  notify: Restart prometheus
+
+- name: Create Prometheus rules directory
+  ansible.builtin.file:
+    path: /etc/prometheus/rules
+    state: directory
+    mode: "0755"
+
+- name: Copy alert rules
+  ansible.builtin.copy:
+    src: "{{ monitoring_repo_root }}/prometheus/rules/alerts.yml"
+    dest: /etc/prometheus/rules/alerts.yml
+    mode: "0644"
+    validate: /usr/bin/promtool check rules %s
+  notify: Restart prometheus
+
+- name: Provision Grafana datasource
+  ansible.builtin.template:
+    src: datasource.yml.j2
+    dest: /etc/grafana/provisioning/datasources/prometheus.yml
+    mode: "0644"
+  notify: Restart grafana
+
+- name: Provision Grafana dashboard provider
+  ansible.builtin.copy:
+    src: "{{ monitoring_repo_root }}/grafana/provisioning/dashboards/dashboards.yml"
+    dest: /etc/grafana/provisioning/dashboards/dashboards.yml
+    mode: "0644"
+  notify: Restart grafana
+
+- name: Create dashboards directory
+  ansible.builtin.file:
+    path: /var/lib/grafana/dashboards
+    state: directory
+    owner: grafana
+    mode: "0755"
+
+- name: Copy dashboards
+  ansible.builtin.copy:
+    src: "{{ monitoring_repo_root }}/grafana/dashboards/"
+    dest: /var/lib/grafana/dashboards/
+    owner: grafana
+    mode: "0644"
+  notify: Restart grafana
+
+- name: Set Grafana admin password
+  ansible.builtin.lineinfile:
+    path: /etc/grafana/grafana.ini
+    regexp: '^;?admin_password ='
+    line: "admin_password = {{ grafana_admin_password }}"
+  no_log: true
+  notify: Restart grafana
+
+- name: Enable and start services
+  ansible.builtin.systemd:
+    name: "{{ item }}"
+    state: started
+    enabled: true
+  loop: [prometheus, grafana-server]

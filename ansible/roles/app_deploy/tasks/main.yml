@@ -1,0 +1,84 @@
+---
+- name: Ensure service user
+  ansible.builtin.user:
+    name: "{{ order_service_user }}"
+    system: true
+    shell: /usr/sbin/nologin
+
+- name: Ensure Java runtime
+  ansible.builtin.apt:
+    name: openjdk-17-jre-headless
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+
+- name: Create release directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: "{{ order_service_user }}"
+    mode: "0755"
+  loop:
+    - "{{ order_service_root }}"
+    - "{{ order_service_root }}/releases/{{ app_version }}"
+
+- name: Record the currently active release (for rollback)
+  ansible.builtin.stat:
+    path: "{{ order_service_root }}/current"
+  register: order_current
+
+- name: Save previous release path
+  ansible.builtin.copy:
+    content: "{{ order_current.stat.lnk_source }}"
+    dest: "{{ order_service_root }}/previous"
+    mode: "0644"
+  when: order_current.stat.islnk | default(false)
+
+- name: Download artifact from GCS
+  ansible.builtin.command: >
+    gcloud storage cp {{ order_service_artifact }}
+    {{ order_service_root }}/releases/{{ app_version }}/order-service.jar
+  changed_when: true
+
+- name: Fix jar ownership
+  ansible.builtin.file:
+    path: "{{ order_service_root }}/releases/{{ app_version }}/order-service.jar"
+    owner: "{{ order_service_user }}"
+    mode: "0644"
+
+- name: Install systemd unit
+  ansible.builtin.template:
+    src: order-service.service.j2
+    dest: /etc/systemd/system/order-service.service
+    mode: "0644"
+  notify: Reload systemd
+
+- name: Flush handlers so the unit is loaded
+  ansible.builtin.meta: flush_handlers
+
+- name: Switch current symlink to new release
+  ansible.builtin.file:
+    src: "{{ order_service_root }}/releases/{{ app_version }}"
+    dest: "{{ order_service_root }}/current"
+    state: link
+    force: true
+
+- name: Restart order-service
+  ansible.builtin.systemd:
+    name: order-service
+    state: restarted
+    enabled: true
+
+- name: List releases
+  ansible.builtin.find:
+    paths: "{{ order_service_root }}/releases"
+    file_type: directory
+  register: order_releases
+
+- name: Prune old releases
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: absent
+  loop: "{{ (order_releases.files | sort(attribute='mtime', reverse=true))[order_service_keep_releases:] }}"
+  loop_control:
+    label: "{{ item.path }}"

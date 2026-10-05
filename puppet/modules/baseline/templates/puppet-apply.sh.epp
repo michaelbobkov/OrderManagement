@@ -1,0 +1,5 @@
+#!/bin/sh
+# Managed by Puppet (baseline::agent_cron)
+exec /opt/puppetlabs/bin/puppet apply \
+  --modulepath=/opt/order-platform/puppet/modules \
+  /opt/order-platform/puppet/manifests/site.pp

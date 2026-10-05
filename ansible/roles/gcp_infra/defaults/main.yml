@@ -1,0 +1,14 @@
+---
+gcp_region: us-central1
+gcp_zone: us-central1-a
+gcp_auth_kind: serviceaccount
+network_name: order-platform-vpc
+subnet_name: order-platform-subnet
+subnet_cidr: 10.10.0.0/24
+machine_type: e2-small
+source_image: projects/debian-cloud/global/images/family/debian-12
+app_vm_count: 2
+app_vm_prefix: app
+monitoring_vm_name: monitoring
+admin_source_ranges:
+  - 0.0.0.0/0   # restrict to your office/VPN range in real use

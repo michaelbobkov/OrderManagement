@@ -1,0 +1,79 @@
+---
+- name: Create VPC network
+  google.cloud.gcp_compute_network:
+    name: "{{ network_name }}"
+    auto_create_subnetworks: false
+    project: "{{ gcp_project }}"
+    auth_kind: "{{ gcp_auth_kind }}"
+    service_account_file: "{{ gcp_sa_file }}"
+    state: present
+  register: network
+
+- name: Create subnet
+  google.cloud.gcp_compute_subnetwork:
+    name: "{{ subnet_name }}"
+    region: "{{ gcp_region }}"
+    network: "{{ network }}"
+    ip_cidr_range: "{{ subnet_cidr }}"
+    project: "{{ gcp_project }}"
+    auth_kind: "{{ gcp_auth_kind }}"
+    service_account_file: "{{ gcp_sa_file }}"
+    state: present
+  register: subnet
+
+- name: Firewall rule for SSH
+  google.cloud.gcp_compute_firewall:
+    name: order-platform-ssh
+    network: "{{ network }}"
+    allowed:
+      - ip_protocol: tcp
+        ports: ["22"]
+    source_ranges: "{{ admin_source_ranges }}"
+    target_tags: [order-platform]
+    project: "{{ gcp_project }}"
+    auth_kind: "{{ gcp_auth_kind }}"
+    service_account_file: "{{ gcp_sa_file }}"
+    state: present
+
+- name: Firewall rule for app ports (internal) and monitoring UIs
+  google.cloud.gcp_compute_firewall:
+    name: order-platform-internal
+    network: "{{ network }}"
+    allowed:
+      - ip_protocol: tcp
+        ports: ["8080", "8000", "9100"]
+    source_ranges: ["{{ subnet_cidr }}"]
+    target_tags: [order-platform]
+    project: "{{ gcp_project }}"
+    auth_kind: "{{ gcp_auth_kind }}"
+    service_account_file: "{{ gcp_sa_file }}"
+    state: present
+
+- name: Firewall rule for Grafana and Prometheus
+  google.cloud.gcp_compute_firewall:
+    name: order-platform-monitoring-ui
+    network: "{{ network }}"
+    allowed:
+      - ip_protocol: tcp
+        ports: ["3000", "9090"]
+    source_ranges: "{{ admin_source_ranges }}"
+    target_tags: [monitoring]
+    project: "{{ gcp_project }}"
+    auth_kind: "{{ gcp_auth_kind }}"
+    service_account_file: "{{ gcp_sa_file }}"
+    state: present
+
+- name: Create disks and app VMs
+  ansible.builtin.include_tasks: vm.yml
+  vars:
+    vm_name: "{{ app_vm_prefix }}-{{ item }}"
+    vm_role: app
+    vm_tags: [order-platform]
+  loop: "{{ range(1, app_vm_count | int + 1) | list }}"
+
+- name: Create disk and monitoring VM
+  ansible.builtin.include_tasks: vm.yml
+  vars:
+    vm_name: "{{ monitoring_vm_name }}"
+    vm_role: monitoring
+    vm_tags: [order-platform, monitoring]

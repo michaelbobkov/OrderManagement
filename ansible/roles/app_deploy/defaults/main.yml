@@ -1,0 +1,7 @@
+---
+artifact_bucket: "{{ lookup('env', 'ARTIFACT_BUCKET') }}"
+order_service_root: /opt/order-service
+order_service_user: orders
+order_service_artifact: "gs://{{ artifact_bucket }}/order-service/order-service-{{ app_version }}.jar"
+order_service_notification_url: http://localhost:8000
+order_service_keep_releases: 3

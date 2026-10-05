@@ -1,0 +1,6 @@
+---
+artifact_bucket: "{{ lookup('env', 'ARTIFACT_BUCKET') }}"
+notification_root: /opt/notification-service
+notification_user: notifier
+notification_artifact: "gs://{{ artifact_bucket }}/notification-service/notification_service-{{ app_version }}-py3-none-any.whl"
+notification_keep_releases: 3

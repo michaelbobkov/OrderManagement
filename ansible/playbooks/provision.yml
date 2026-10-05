@@ -1,0 +1,10 @@
+---
+- name: Provision GCP infrastructure
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    gcp_project: "{{ lookup('env', 'GCP_PROJECT') }}"
+    gcp_sa_file: "{{ lookup('env', 'GCP_SA_FILE') }}"
+  roles:
+    - gcp_infra

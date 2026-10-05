@@ -1,0 +1,13 @@
+[Unit]
+Description=Notification service
+After=network.target
+
+[Service]
+User={{ notification_user }}
+WorkingDirectory={{ notification_root }}/current
+ExecStart={{ notification_root }}/current/venv/bin/uvicorn app.main:app --host 0.0.0.0 --port 8000
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

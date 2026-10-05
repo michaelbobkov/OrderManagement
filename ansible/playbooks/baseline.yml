@@ -1,0 +1,37 @@
+---
+- name: Install Puppet agent and apply baseline
+  hosts: all
+  become: true
+  vars:
+    puppet_release_deb: "https://apt.puppet.com/puppet8-release-bookworm.deb"
+    puppet_dir: /opt/order-platform/puppet
+  tasks:
+    - name: Download Puppet release package
+      ansible.builtin.get_url:
+        url: "{{ puppet_release_deb }}"
+        dest: /tmp/puppet-release.deb
+        mode: "0644"
+
+    - name: Install Puppet release package
+      ansible.builtin.apt:
+        deb: /tmp/puppet-release.deb
+
+    - name: Install Puppet agent
+      ansible.builtin.apt:
+        name: puppet-agent
+        update_cache: true
+
+    - name: Copy Puppet manifests and modules
+      ansible.posix.synchronize:
+        src: "{{ playbook_dir }}/../../puppet/"
+        dest: "{{ puppet_dir }}/"
+        delete: true
+
+    - name: Apply baseline (masterless)
+      ansible.builtin.command: >
+        /opt/puppetlabs/bin/puppet apply
+        --modulepath={{ puppet_dir }}/modules
+        {{ puppet_dir }}/manifests/site.pp
+      register: puppet_apply
+      changed_when: "'Notice: Applied catalog' in puppet_apply.stdout and 'changed' in puppet_apply.stdout"
+      failed_when: puppet_apply.rc not in [0, 2]

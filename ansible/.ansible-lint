@@ -1,0 +1,6 @@
+---
+profile: production
+skip_list:
+  - var-naming[no-role-prefix]   # shared vars (app_version, artifact_bucket) are intentional
+exclude_paths:
+  - inventory/

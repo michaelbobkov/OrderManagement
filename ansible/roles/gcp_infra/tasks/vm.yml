@@ -1,0 +1,48 @@
+---
+- name: "Create boot disk for {{ vm_name }}"
+  google.cloud.gcp_compute_disk:
+    name: "{{ vm_name }}-disk"
+    zone: "{{ gcp_zone }}"
+    source_image: "{{ source_image }}"
+    size_gb: 20
+    project: "{{ gcp_project }}"
+    auth_kind: "{{ gcp_auth_kind }}"
+    service_account_file: "{{ gcp_sa_file }}"
+    state: present
+  register: disk
+
+- name: "Create external IP for {{ vm_name }}"
+  google.cloud.gcp_compute_address:
+    name: "{{ vm_name }}-ip"
+    region: "{{ gcp_region }}"
+    project: "{{ gcp_project }}"
+    auth_kind: "{{ gcp_auth_kind }}"
+    service_account_file: "{{ gcp_sa_file }}"
+    state: present
+  register: address
+
+- name: "Create instance {{ vm_name }}"
+  google.cloud.gcp_compute_instance:
+    name: "{{ vm_name }}"
+    machine_type: "{{ machine_type }}"
+    zone: "{{ gcp_zone }}"
+    disks:
+      - auto_delete: true
+        boot: true
+        source: "{{ disk }}"
+    network_interfaces:
+      - network: "{{ network }}"
+        subnetwork: "{{ subnet }}"
+        access_configs:
+          - name: External NAT
+            nat_ip: "{{ address }}"
+            type: ONE_TO_ONE_NAT
+    labels:
+      platform: order-platform
+      role: "{{ vm_role }}"
+    tags:
+      items: "{{ vm_tags }}"
+    project: "{{ gcp_project }}"
+    auth_kind: "{{ gcp_auth_kind }}"
+    service_account_file: "{{ gcp_sa_file }}"
+    state: present

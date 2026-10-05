@@ -1,0 +1,37 @@
+---
+# Restores the previous release symlink for each service and restarts it.
+# Included from the rescue section of playbooks/deploy.yml.
+- name: Check for a previous release
+  ansible.builtin.stat:
+    path: "{{ item.root }}/previous"
+  register: prev_marker
+  loop:
+    - { root: /opt/order-service, unit: order-service }
+    - { root: /opt/notification-service, unit: notification-service }
+
+- name: Read previous release paths
+  ansible.builtin.slurp:
+    src: "{{ item.item.root }}/previous"
+  register: prev_paths
+  loop: "{{ prev_marker.results }}"
+  loop_control:
+    label: "{{ item.item.unit }}"
+  when: item.stat.exists
+
+- name: Restore symlinks to previous release
+  ansible.builtin.file:
+    src: "{{ item.content | b64decode | trim }}"
+    dest: "{{ item.item.item.root }}/current"
+    state: link
+    force: true
+  loop: "{{ prev_paths.results | rejectattr('skipped', 'defined') | list }}"
+  loop_control:
+    label: "{{ item.item.item.unit }}"
+
+- name: Restart services on previous release
+  ansible.builtin.systemd:
+    name: "{{ item.item.unit }}"
+    state: restarted
+  loop: "{{ prev_marker.results | selectattr('stat.exists') | list }}"
+  loop_control:
+    label: "{{ item.item.unit }}"
